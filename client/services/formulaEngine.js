@@ -3,26 +3,44 @@ import DependencyGraph from "./dependencyGraph.js";
 import FormulaParser from "./formulaParser.js";
 
 class FormulaEngineMediator {
-  constructor(table, dependencyGraph) {
+  constructor(table) {
     this.table = table;
-    this.dependencyGraph = dependencyGraph;
+    this.dependencyGraph = new DependencyGraph();
+    this.formulaParser = new FormulaParser();
+  }
+  
+  // TODO: Implement a reset method to clear everything
+  resetEngine() {
+    this.dependencyGraph = new DependencyGraph();
     this.formulaParser = new FormulaParser();
   }
 
   setTable(table) {
     this.table = table;
+
+    for (let rowIdx = 1; rowIdx < this.table.rows.length; rowIdx++) {
+      for (let colIdx = 1; colIdx < this.table.cols.length; colIdx++) {
+        const coordinate = `${this.table.getColumnName(colIdx)}${rowIdx}`;
+        const formula = this.table.getCellFormulaByCoordinate(coordinate);
+
+        if (formula) {
+          this.updateFormulaAndDependents(coordinate, formula);
+        }
+      }
+    }
   }
 
+  // TODO: Implement a value cache to avoid recalculating the same value multiple times
   updateDependents(cell) {
-    const { hasCycle, evaluationOrder } =
+    let { cycleHead, evaluationOrder, cycle } =
       this.dependencyGraph.getCellEvaluationOrder(cell);
 
-    if (hasCycle) {
-      evaluationOrder.forEach((cell) => {
-        this.table.setCell(cell.row, cell.col, "#CYCLE");
+    if (cycleHead) {
+      cycle.forEach((cell) => {
+        this.table.setCellByCoordinate(cell, "#CYCLE");
       });
 
-      return;
+      evaluationOrder = evaluationOrder.filter((cell) => !cycle.has(cell));
     }
 
     // for every cell, find depdencies, get values, evalue and set value
@@ -33,12 +51,32 @@ class FormulaEngineMediator {
     Object.keys(cellFormulas).forEach((coordinate) => {
       this.formulaParser.setExpression(cellFormulas[coordinate]);
 
-      // FIXME: #ERROR if formula invalid OR variable not found / invalid
       const requiredCellValues = this.formulaParser.getVariables();
+
+      //#ERROR if different format than table cell AND NaN
+      if (!requiredCellValues.every((val) => /^[A-Z]+\d+$/.test(val) || !isNaN(val))) {
+        this.table.setCellByCoordinate(coordinate, '#ERROR');
+        return;
+      }
+
       const requiredValues = this.table.getCellsByCoordinate(
         requiredCellValues,
         { returnType: "value" }
       );
+
+      if (Object.values(requiredValues).includes('#CYCLE')) {
+        this.table.setCellByCoordinate(coordinate, '#CYCLE');
+        return;
+      }
+      else if (Object.values(requiredValues).includes('#ERROR')) {
+        this.table.setCellByCoordinate(coordinate, '#ERROR');
+        return;
+      }
+      else if (Object.values(requiredValues).some((val) => isNaN(val))) {
+        this.table.setCellByCoordinate(coordinate, '#ERROR');
+        return;
+      }
+
       const evaluatedValue =
         this.formulaParser.evaluateExpression(requiredValues);
 
@@ -46,6 +84,11 @@ class FormulaEngineMediator {
     });
   }
 
+  /**
+   * Updates the formula for a specific cell and its dependents.
+   * @param {string} cell - The cell to update (e.g., "A1").
+   * @param {string} formula - The new formula to set for the cell.
+   */
   updateFormulaAndDependents(cell, formula) {
     if (formula[0] === "=") {
       formula = formula.slice(1);
@@ -57,29 +100,9 @@ class FormulaEngineMediator {
     this.dependencyGraph.updateDependencies(cell, dependencies);
 
     this.updateDependents(cell);
+
     return;
   }
 }
 
-export default new FormulaEngineMediator(new Table(), new DependencyGraph());
-
-// TESTING PURPOSE ONLY
-// const formulaEngine = new FormulaEngineMediator(new Table(), new DependencyGraph());
-// formulaEngine.table.setCellByCoordinate("B1", '6');
-// formulaEngine.table.setCellByCoordinate("C1", '5');
-
-// formulaEngine.table.setCellByCoordinate("A1", "ab", "=B1 + C1");
-// formulaEngine.updateFormulaAndDependents("A1", "B1 + C1");
-// console.log(formulaEngine.table.getCellsByCoordinate(["A1", "B1", "C1", "D2"], { returnType: "cell" })); // Should print the formulas of A1, B1, and C1
-
-// formulaEngine.table.setCellByCoordinate("B1", "" , "=C1 + 2");
-// formulaEngine.updateFormulaAndDependents("B1", "C1 + 2");
-
-// formulaEngine.table.setCellByCoordinate("D2", "", "=B1 + 2");
-// formulaEngine.updateFormulaAndDependents("D2", "B1 + 2");
-// console.log(formulaEngine.table.getCellsByCoordinate(["A1", "B1", "C1", "D2"], { returnType: "cell" })); // Should print the formulas of A1, B1, and C1
-
-// console.log(formulaEngine.dependencyGraph.getDependencies("A1"));
-// console.log(formulaEngine.table.getCellByCoordinate("B1")); // Should print 5
-// console.log(formulaEngine.table.getCellsByCoordinate(["A1", "B1", "C1"], { returnType: "value" })); // Should print the values of A1, B1, and C1
-// console.log(formulaEngine.table.getCellByCoordinate("A1")); // Should print the evaluated value of A1 based on B1 and C1
+export default new FormulaEngineMediator(new Table());

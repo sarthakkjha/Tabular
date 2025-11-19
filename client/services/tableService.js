@@ -10,8 +10,10 @@ function createCell(value = "", formula = null) {
   return cell;
 }
 
-// TODO: Implement methods to only update value / formula
+// TODO: Implement methods to only set-reset value / formula
 
+// FIXME: When adding new row or column, cells with formulas that reference the old row/column 
+// should be updated to reference the new row/column.
 class Table {
   constructor(table = {}, rows = [], cols = [], nextRowID, nextColID) {
     this.table = table;
@@ -39,6 +41,18 @@ class Table {
     newTable.currentCell = existingTable.currentCell;
 
     return newTable;
+  }
+
+  resetTable() {
+    this.rows = [];
+    this.cols = [];
+    this.currentCell = null;
+    this.table = {};
+  }
+
+  setGridIds(rows, cols) {
+    this.rows = rows;
+    this.cols = cols;
   }
 
   createDefaultTable(rows = 1001, cols = 53) {
@@ -89,17 +103,38 @@ class Table {
     return { column: null, row: null };
   }
 
-  getCell(rowIdx, colIdx) {
-    return this.table[this.rows[rowIdx]]?.[colIdx] || null;
+  getCell(rowIdx, colIdx, getIds = false) {
+    const cell = this.table[this.rows[rowIdx]]?.[this.cols[colIdx]] || null;
+
+    if (getIds && cell) {
+      return {
+        ...cell,
+        rid: this.rows[rowIdx],
+        cid: this.cols[colIdx],
+      };
+    }
+    
+    return cell;
   }
 
-  getCellByCoordinate(coordinate) {
+  getCellFormulaByCoordinate(coordinate) {
+    const cell = this.getCellByCoordinate(coordinate);
+    const formula = cell?.formula;
+    
+    if (formula && formula[0] === "=") {
+      return formula.slice(1);
+    }
+
+    return formula;
+  }
+
+  getCellByCoordinate(coordinate, getIds=false) {
     const { column, row } = this.splitCellCoordinate(coordinate);
 
     if (column && row) {
       const colIndex = this.getColumnIndex(column);
 
-      return this.getCell(row, colIndex);
+      return this.getCell(row, colIndex, getIds);
     }
 
     return null;
@@ -142,23 +177,61 @@ class Table {
     return cells;
   }
 
-  setCell(row, col, value, formula = null) {
-    row = this.rows[row]; // Convert row index to actual row ID
+  setCellById({ rid, cid, value})
+  {
+    if (!this.table[rid]) {
+      this.table[rid] = {};
+    }
 
+    if (!this.table[rid][cid]) {
+      this.table[rid][cid] = createCell();
+    }
+
+    if (value && value[0] === "=") {
+      this.table[rid][cid].formula = value;
+    } else {
+      this.table[rid][cid].value = value;
+    }
+  }
+
+  createCellIfNotExists(row, col) {
     if (!this.table[row]) {
       this.table[row] = {};
     }
 
     if (!this.table[row][col]) {
-      this.table[row][col] = createCell(value, formula);
-      return;
+      this.table[row][col] = createCell();
     }
+  }
+
+  setCell(row, col, value, formula = null) {
+    row = this.rows[row]; // Convert row index to actual row ID
+    col = this.cols[col]; // Convert column index to actual column ID
+
+    this.createCellIfNotExists(row, col);
 
     this.table[row][col].value = value;
-    
+
+    // remove check for not null formula (formula && formula !== this.table[row][col].formula)
     if (formula && formula !== this.table[row][col].formula) {
       this.table[row][col].formula = formula;
     }
+  }
+
+  resetFormula(coordinate) {
+    const { column, row } = this.splitCellCoordinate(coordinate);
+    
+    const colIndex = this.getColumnIndex(column);
+    const rowId = this.rows[row];
+    const colId = this.cols[colIndex];
+
+    this.createCellIfNotExists(rowId, colId);
+
+    if (this.table[rowId]?.[colId]?.formula) {
+      this.table[rowId][colId].formula = null;
+    }
+
+    console.log(this.table[rowId][colId].formula);
   }
 
   setCellByCoordinate(cell, value, formula = null) {
@@ -166,14 +239,14 @@ class Table {
 
     if (column && row) {
       const colIndex = this.getColumnIndex(column);
-      const cellObj = this.setCell(row, colIndex, value, formula);
 
-      if (cellObj) {
-        cellObj.value = value;
-        return true;
-      }
+      this.setCell(row, colIndex, value, formula);
+
+      return true;
     }
 
+    console.warn(`Invalid cell coordinate: ${cell}`);
+    
     return false;
   }
 
