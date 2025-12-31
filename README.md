@@ -175,21 +175,3 @@ flowchart TD
 * Enter values and formulas (e.g. `=A1+B2`)
 * Save to database
 * Load/update/delete spreadsheets
-
----
-
-## 🔮 Future Scope
-
-* ✅ **UI Enhancements** → Add/remove columns
-* ✅ **Cross-compatibility** → Import/export CSV, Excel
-* ✅ **Advanced formulas** → `SUM`, `AVERAGE`, etc.
-* ✅ **Collaboration** → Multi-user editing with Supabase Realtime or WebSockets
-* ✅ **Undo/Redo history**
-
----
-
-## 📜 License
-
-MIT License
-
----
